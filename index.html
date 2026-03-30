@@ -1,1 +1,865 @@
-<html><body>Test</body></html></body></html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>체크인 미팅</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *{-webkit-tap-highlight-color:transparent;box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#1e293b}
+  input[type="range"]{-webkit-appearance:none;height:6px;border-radius:3px;background:#e2e8f0;outline:none;width:100%}
+  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#3b82f6;cursor:pointer}
+  .overlay{animation:fadeIn .2s;position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;z-index:50}
+  .sheet{animation:slideUp .25s;background:#fff;width:100%;border-radius:16px 16px 0 0;padding:24px;max-height:92vh;overflow-y:auto}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .hide-scroll::-webkit-scrollbar{display:none}
+  .hide-scroll{-ms-overflow-style:none;scrollbar-width:none}
+  button{cursor:pointer;font-family:inherit}
+  textarea,input,select{font-family:inherit}
+  .emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;max-height:200px;overflow-y:auto}
+  .emoji-btn{font-size:22px;padding:6px;border:2px solid transparent;border-radius:8px;background:none;text-align:center}
+  .emoji-btn:hover,.emoji-btn.active{border-color:#3b82f6;background:#eff6ff}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+
+// ===== DEFAULT CONFIG =====
+const DEFAULT_MEMBERS = ["플투","메텔","체라","뮤","릴로"];
+const DEFAULT_MANAGER = "플투";
+const EMOJI_OPTIONS = [
+  // 표정
+  "😊","😎","🤓","😇","🥳","🤩","😏","🫡","🤗","😴","🥹","🤭","😼","🫠",
+  // 동물
+  "🐱","🐶","🦊","🐻","🐼","🐨","🦁","🐯","🐸","🐵","🦄","🐲","🐰","🐧","🐥","🦋","🐢","🐙","🦈","🐳","🐬","🦖","🦉","🐺","🦝","🐹","🐾",
+  // 자연/날씨
+  "🌸","🌻","🍀","🌈","🌙","☀️","⭐","🌊","🍁","🌵","🪴","🌺","🌷","❄️","🔥",
+  // 음식
+  "☕","🍕","🍜","🍣","🥐","🍰","🍩","🧁","🍺","🍷","🥤","🍔","🌮","🍿","🍫","🧀","🥑","🍓","🍑","🍉",
+  // 취미/활동
+  "🎯","🎨","🎵","🎮","🚀","💡","📚","🏋️","🎸","🎤","🏄","🎪","🎬","🎧","⚽","🏀","🎾","🏂","🧘","🚴","🎣","🏕️","🎲","🧩",
+  // 사물/기타
+  "💎","🧸","🎭","🔮","🪄","💫","🌟","❤️","💜","💙","🧡","💚","🖤","✨","🫧","🎀","👑","🦺","🧢","👓",
+];
+const MBTI_LIST = ["INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP","ISTJ","ISFJ","ESTJ","ESFJ","ISTP","ISFP","ESTP","ESFP"];
+
+const SK = {
+  members:"tht_members", manager:"tht_manager",
+  profiles:"tht_profiles", checkins:"tht_checkins", oneOnOnes:"tht_oneOnOnes",
+  apiKey:"tht_apiKey", pins:"tht_pins", session:"tht_session", emojis:"tht_emojis",
+};
+
+const load=k=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):null}catch{return null}};
+const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+
+// Init members
+const getMembers=()=>load(SK.members)||DEFAULT_MEMBERS;
+const getManager=()=>load(SK.manager)||DEFAULT_MANAGER;
+const getEmojis=()=>load(SK.emojis)||{};
+
+const callClaude=async(prompt,sys="")=>{
+  const key=localStorage.getItem(SK.apiKey);
+  if(!key)return"⚠️ 설정에서 API 키를 입력하면 AI 분석을 사용할 수 있어요.";
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys||"팀 분석 전문가. 한국어 간결.",messages:[{role:"user",content:prompt}]})
+    });
+    if(!r.ok){const e=await r.json().catch(()=>({}));return`⚠️ ${e.error?.message||r.status}`}
+    const d=await r.json();return d.content?.[0]?.text||"분석 결과 없음";
+  }catch(e){return`⚠️ ${e.message}`}
+};
+
+function getWeekKey(){
+  const d=new Date(),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
+  return new Date(new Date(d).setDate(diff)).toISOString().split("T")[0];
+}
+
+// ===== SHARED COMPONENTS =====
+function Card({children,style:sx}){return<div style={{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,.05)",...sx}}>{children}</div>}
+function TextArea({label,value,onChange,placeholder,rows}){
+  return(<div style={{marginBottom:14}}>
+    <label style={{fontSize:13,color:"#64748b",display:"block",marginBottom:4}}>{label}</label>
+    <textarea value={value} onChange={e=>onChange(e.target.value)} rows={rows||2} placeholder={placeholder||""}
+      style={{width:"100%",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px",fontSize:14,resize:"none",outline:"none"}}/>
+  </div>)
+}
+function Btn({children,onClick,color,disabled,full,outline,small,style:sx}){
+  const bg=outline?"#fff":(color||"#3b82f6"),fg=outline?(color||"#3b82f6"):"#fff";
+  return<button onClick={onClick} disabled={disabled} style={{
+    padding:small?"7px 14px":"11px 20px",background:bg,color:fg,
+    border:outline?`1.5px solid ${color||"#cbd5e1"}`:"none",
+    borderRadius:10,fontWeight:600,fontSize:small?13:14,width:full?"100%":"auto",opacity:disabled?.5:1,...sx
+  }}>{children}</button>
+}
+function MemberAvatar({name,size,emojis}){
+  const em=(emojis||getEmojis())[name];
+  const s=size||36;
+  return<div style={{width:s,height:s,borderRadius:"50%",background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:s*.55,flexShrink:0}}>
+    {em||name[0]}
+  </div>
+}
+
+// ===== AUTH =====
+function AuthWrap({children}){
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f0f9ff,#e0e7ff,#f5f3ff)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:20,boxShadow:"0 8px 40px rgba(0,0,0,.08)",padding:"32px 24px",width:"100%",maxWidth:380}}>{children}</div>
+    </div>
+  );
+}
+function AuthScreen({onLogin}){
+  const [step,setStep]=useState("select");
+  const [selected,setSelected]=useState(null);
+  const [pin,setPin]=useState("");
+  const [newPin,setNewPin]=useState("");
+  const [confirmPin,setConfirmPin]=useState("");
+  const [error,setError]=useState("");
+  const pins=load(SK.pins)||{};
+  const members=getMembers();
+
+  const handleSelect=m=>{setSelected(m);setPin("");setError("");setStep(pins[m]?"pin":"setup")};
+  const handlePinLogin=()=>{if(pin===pins[selected]){save(SK.session,selected);onLogin(selected)}else{setError("비밀번호가 틀렸어요");setPin("")}};
+  const handleSetup=()=>{
+    if(newPin.length<4){setError("4자리 이상 입력해주세요");return}
+    if(newPin!==confirmPin){setError("비밀번호가 일치하지 않아요");return}
+    const u={...pins,[selected]:newPin};save(SK.pins,u);save(SK.session,selected);onLogin(selected);
+  };
+
+  if(step==="select")return(
+    <AuthWrap>
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{fontSize:32,marginBottom:6}}>📋</div>
+        <h1 style={{fontSize:21,fontWeight:700}}>체크인 미팅</h1>
+        <p style={{color:"#94a3b8",fontSize:14,marginTop:4}}>접속할 이름을 선택하세요</p>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {members.map(m=>{const has=!!pins[m];return(
+          <button key={m} onClick={()=>handleSelect(m)} style={{width:"100%",padding:"13px 16px",borderRadius:12,border:"2px solid #f1f5f9",background:"#fff",textAlign:"left",fontWeight:500,fontSize:15,display:"flex",justifyContent:"space-between",alignItems:"center",color:"#334155"}}>
+            <span style={{display:"flex",alignItems:"center",gap:8}}><MemberAvatar name={m} size={28}/>{m}</span>
+            <span style={{fontSize:11,color:has?"#10b981":"#cbd5e1"}}>{has?"🔒":"새 계정"}</span>
+          </button>
+        )})}
+      </div>
+    </AuthWrap>
+  );
+
+  if(step==="pin")return(
+    <AuthWrap>
+      <button onClick={()=>setStep("select")} style={{background:"none",border:"none",color:"#3b82f6",fontSize:14,marginBottom:16}}>← 돌아가기</button>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <MemberAvatar name={selected} size={52} />
+        <h2 style={{fontSize:18,fontWeight:600,marginTop:10}}>{selected}</h2>
+      </div>
+      <div style={{marginBottom:14}}>
+        <input type="password" value={pin} onChange={e=>{setPin(e.target.value);setError("")}} onKeyDown={e=>e.key==="Enter"&&handlePinLogin()}
+          placeholder="비밀번호" autoFocus style={{width:"100%",border:`1.5px solid ${error?"#ef4444":"#e2e8f0"}`,borderRadius:10,padding:"12px",fontSize:16,outline:"none",textAlign:"center",letterSpacing:4}}/>
+        {error&&<p style={{color:"#ef4444",fontSize:13,marginTop:6,textAlign:"center"}}>{error}</p>}
+      </div>
+      <Btn onClick={handlePinLogin} full>로그인</Btn>
+    </AuthWrap>
+  );
+
+  if(step==="setup")return(
+    <AuthWrap>
+      <button onClick={()=>setStep("select")} style={{background:"none",border:"none",color:"#3b82f6",fontSize:14,marginBottom:16}}>← 돌아가기</button>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{fontSize:28}}>🔐</div>
+        <h2 style={{fontSize:18,fontWeight:600,marginTop:6}}>처음이시네요!</h2>
+        <p style={{color:"#94a3b8",fontSize:14}}>{selected} 비밀번호를 설정해주세요</p>
+      </div>
+      <div style={{marginBottom:10}}>
+        <input type="password" value={newPin} onChange={e=>{setNewPin(e.target.value);setError("")}} placeholder="비밀번호 (4자리 이상)" autoFocus
+          style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:10,padding:"12px",fontSize:16,outline:"none",textAlign:"center",letterSpacing:4}}/>
+      </div>
+      <div style={{marginBottom:14}}>
+        <input type="password" value={confirmPin} onChange={e=>{setConfirmPin(e.target.value);setError("")}} onKeyDown={e=>e.key==="Enter"&&handleSetup()}
+          placeholder="비밀번호 확인" style={{width:"100%",border:`1.5px solid ${error?"#ef4444":"#e2e8f0"}`,borderRadius:10,padding:"12px",fontSize:16,outline:"none",textAlign:"center",letterSpacing:4}}/>
+        {error&&<p style={{color:"#ef4444",fontSize:13,marginTop:6,textAlign:"center"}}>{error}</p>}
+      </div>
+      <Btn onClick={handleSetup} full>설정 완료 & 접속</Btn>
+    </AuthWrap>
+  );
+
+}
+
+// ===== MAIN APP =====
+function App(){
+  const [user,setUser]=useState(null);
+  const [tab,setTab]=useState("profiles");
+  const [profiles,setProfiles]=useState({});
+  const [checkins,setCheckins]=useState([]);
+  const [oneOnOnes,setOneOnOnes]=useState([]);
+  const [showSettings,setShowSettings]=useState(false);
+  const [members,setMembers]=useState(getMembers());
+
+  useEffect(()=>{
+    const s=load(SK.session);if(s)setUser(s);
+    setProfiles(load(SK.profiles)||{});
+    setCheckins(load(SK.checkins)||[]);
+    setOneOnOnes(load(SK.oneOnOnes)||[]);
+    setMembers(getMembers());
+  },[]);
+
+  const handleLogout=()=>{localStorage.removeItem(SK.session);setUser(null)};
+  const refreshMembers=()=>setMembers(getMembers());
+
+  if(!user)return<AuthScreen onLogin={setUser}/>;
+  const isManager=user===getManager();
+  const emojis=getEmojis();
+
+  const navItems=[
+    {id:"profiles",label:"👤 프로필"},
+    {id:"checkin",label:"📝 체크인"},
+    {id:"one_on_one",label:"🤝 1:1"},
+    {id:"dashboard",label:"📊 분석"},
+  ];
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f8fafc"}}>
+      <header style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"11px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontWeight:700,fontSize:16}}>📋 체크인 미팅</span>
+          <span style={{fontSize:11,color:"#64748b",background:"#f1f5f9",borderRadius:999,padding:"2px 10px"}}>{emojis[user]||""} {user.split("(")[0]}</span>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <button onClick={()=>setShowSettings(true)} style={{background:"none",border:"none",fontSize:16,color:"#94a3b8"}}>⚙️</button>
+          <button onClick={handleLogout} style={{background:"none",border:"none",fontSize:12,color:"#ef4444"}}>로그아웃</button>
+        </div>
+      </header>
+      <nav style={{display:"flex",background:"#fff",borderBottom:"1px solid #e2e8f0"}} className="hide-scroll">
+        {navItems.map(n=>(
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{
+            flex:1,padding:"12px 6px",fontSize:13,fontWeight:600,textAlign:"center",
+            background:"none",border:"none",
+            borderBottom:`2.5px solid ${tab===n.id?"#3b82f6":"transparent"}`,
+            color:tab===n.id?"#2563eb":"#94a3b8",whiteSpace:"nowrap"
+          }}>{n.label}</button>
+        ))}
+      </nav>
+      <main style={{maxWidth:640,margin:"0 auto",padding:16}}>
+        {tab==="profiles"&&<ProfilesTab user={user} isManager={isManager} profiles={profiles} setProfiles={setProfiles} members={members} refreshMembers={refreshMembers}/>}
+        {tab==="checkin"&&<CheckinTab user={user} checkins={checkins} setCheckins={setCheckins} members={members}/>}
+        {tab==="one_on_one"&&<OneOnOneTab user={user} isManager={isManager} oneOnOnes={oneOnOnes} setOneOnOnes={setOneOnOnes} members={members}/>}
+        {tab==="dashboard"&&<DashboardTab checkins={checkins} profiles={profiles} oneOnOnes={oneOnOnes} members={members}/>}
+      </main>
+      {showSettings&&<SettingsModal user={user} isManager={isManager} onClose={()=>setShowSettings(false)} members={members} refreshMembers={refreshMembers}/>}
+    </div>
+  );
+}
+
+// ===== SETTINGS =====
+function SettingsModal({user,isManager,onClose,members,refreshMembers}){
+  const [apiKey,setApiKey]=useState(localStorage.getItem(SK.apiKey)||"");
+  const [saved,setSaved]=useState(false);
+  const [showPw,setShowPw]=useState(false);
+  const [oldPw,setOldPw]=useState("");
+  const [newPw,setNewPw]=useState("");
+  const [pwErr,setPwErr]=useState("");
+  const [pwDone,setPwDone]=useState(false);
+  // Add member
+  const [showAdd,setShowAdd]=useState(false);
+  const [newName,setNewName]=useState("");
+  const [addErr,setAddErr]=useState("");
+
+  const handleSaveApi=()=>{
+    if(apiKey.trim())localStorage.setItem(SK.apiKey,apiKey.trim());
+    else localStorage.removeItem(SK.apiKey);
+    setSaved(true);setTimeout(()=>setSaved(false),1500);
+  };
+  const handleChangePw=()=>{
+    const pins=load(SK.pins)||{};
+    if(pins[user]&&pins[user]!==oldPw){setPwErr("현재 비밀번호가 틀렸어요");return}
+    if(newPw.length<4){setPwErr("4자리 이상");return}
+    pins[user]=newPw;save(SK.pins,pins);setPwDone(true);setPwErr("");
+    setTimeout(()=>{setPwDone(false);setShowPw(false);setOldPw("");setNewPw("")},1200);
+  };
+  const handleAddMember=()=>{
+    if(!newName.trim()){setAddErr("이름을 입력해주세요");return}
+    if(members.includes(newName.trim())){setAddErr("이미 있는 이름이에요");return}
+    const updated=[...members,newName.trim()];
+    save(SK.members,updated);
+    refreshMembers();setNewName("");setAddErr("");setShowAdd(false);
+  };
+  const handleRemoveMember=(m)=>{
+    if(m===getManager()){alert("팀장은 삭제할 수 없어요");return}
+    if(!confirm(`${m}을(를) 삭제할까요?`))return;
+    const updated=members.filter(x=>x!==m);save(SK.members,updated);
+    refreshMembers();
+  };
+  const handleReset=()=>{if(confirm("모든 데이터를 초기화할까요?")){Object.values(SK).forEach(k=>localStorage.removeItem(k));location.reload()}};
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <h3 style={{fontWeight:600,fontSize:18,marginBottom:20}}>⚙️ 설정</h3>
+
+        {/* Password */}
+        <Section title="🔐 비밀번호" action={showPw?"접기":"변경"} onAction={()=>setShowPw(!showPw)}>
+          {showPw&&<div style={{background:"#f8fafc",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+            <input type="password" value={oldPw} onChange={e=>{setOldPw(e.target.value);setPwErr("")}} placeholder="현재 비밀번호" style={inputStyle}/>
+            <input type="password" value={newPw} onChange={e=>{setNewPw(e.target.value);setPwErr("")}} placeholder="새 비밀번호 (4자리+)" style={inputStyle}/>
+            {pwErr&&<p style={{color:"#ef4444",fontSize:12}}>{pwErr}</p>}
+            <Btn onClick={handleChangePw} full small>{pwDone?"✅ 완료":"변경"}</Btn>
+          </div>}
+        </Section>
+
+        {/* API */}
+        <Section title="🤖 Claude API 키">
+          <input value={apiKey} onChange={e=>setApiKey(e.target.value)} type="password" placeholder="sk-ant-..." style={{...inputStyle,marginBottom:4}}/>
+          <p style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>없어도 기본 기능은 모두 사용 가능</p>
+          <Btn onClick={handleSaveApi} full small>{saved?"✅ 저장됨":"API 키 저장"}</Btn>
+        </Section>
+
+        {/* Team management - manager only */}
+        {isManager&&<Section title="👥 팀원 관리" action={showAdd?"접기":"추가"} onAction={()=>setShowAdd(!showAdd)}>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:showAdd?12:0}}>
+            {members.map(m=>(
+              <div key={m} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9"}}>
+                <span style={{fontSize:14}}>{m}</span>
+                {m!==getManager()&&<button onClick={()=>handleRemoveMember(m)} style={{background:"none",border:"none",color:"#ef4444",fontSize:12}}>삭제</button>}
+              </div>
+            ))}
+          </div>
+          {showAdd&&<div style={{background:"#f8fafc",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+            <input value={newName} onChange={e=>{setNewName(e.target.value);setAddErr("")}} placeholder="이름 (예: 새팀원)" style={inputStyle}/>
+            {addErr&&<p style={{color:"#ef4444",fontSize:12}}>{addErr}</p>}
+            <Btn onClick={handleAddMember} full small>팀원 추가</Btn>
+          </div>}
+        </Section>}
+
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"10px 0",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff",fontSize:14,color:"#64748b"}}>닫기</button>
+          <button onClick={handleReset} style={{flex:1,padding:"10px 0",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:12,fontSize:13,color:"#dc2626"}}>🗑️ 초기화</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function Section({title,action,onAction,children}){
+  return<div style={{marginBottom:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <span style={{fontSize:14,fontWeight:600}}>{title}</span>
+      {action&&<button onClick={onAction} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13}}>{action}</button>}
+    </div>
+    {children}
+  </div>
+}
+const inputStyle={width:"100%",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:14,outline:"none",boxSizing:"border-box"};
+
+// =======================================
+// 1. PROFILES
+// =======================================
+function ProfilesTab({user,isManager,profiles,setProfiles,members,refreshMembers}){
+  const [editing,setEditing]=useState(false);
+  const [showEmojiPicker,setShowEmojiPicker]=useState(false);
+  const myProfile=profiles[user]||{};
+  const emojis=getEmojis();
+  const [form,setForm]=useState({mbti:"",birthday:"",interests:"",hobbies:"",food:"",bio:"",...myProfile});
+
+  const handleSave=()=>{
+    const updated={...profiles,[user]:form};
+    setProfiles(updated);save(SK.profiles,updated);setEditing(false);
+  };
+  const handleEmojiSelect=(em)=>{
+    const updated={...emojis,[user]:em};
+    save(SK.emojis,updated);setShowEmojiPicker(false);
+  };
+
+  const hasProfile=Object.values(myProfile).some(v=>v);
+  const myEmoji=emojis[user];
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* My Profile */}
+      <Card style={{border:"2px solid #e0e7ff"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div onClick={()=>setShowEmojiPicker(true)} style={{cursor:"pointer",position:"relative"}}>
+              <MemberAvatar name={user} size={46} emojis={emojis}/>
+              <div style={{position:"absolute",bottom:-2,right:-2,width:18,height:18,borderRadius:"50%",background:"#3b82f6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",border:"2px solid #fff"}}>✏</div>
+            </div>
+            <div>
+              <div style={{fontWeight:600,fontSize:16}}>내 프로필</div>
+              <div style={{fontSize:12,color:"#94a3b8"}}>{user}</div>
+            </div>
+          </div>
+          {!editing&&<Btn onClick={()=>{setForm({mbti:"",birthday:"",interests:"",hobbies:"",food:"",bio:"",...myProfile});setEditing(true)}} small outline>
+            {hasProfile?"수정":"작성하기"}
+          </Btn>}
+        </div>
+
+        {/* Emoji picker */}
+        {showEmojiPicker&&(
+          <div style={{background:"#f8fafc",borderRadius:12,padding:12,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:500,color:"#64748b",marginBottom:8}}>내 이모지 선택</div>
+            <div className="emoji-grid">
+              {EMOJI_OPTIONS.map(em=>(
+                <button key={em} className={`emoji-btn ${myEmoji===em?"active":""}`} onClick={()=>handleEmojiSelect(em)}>{em}</button>
+              ))}
+            </div>
+            <button onClick={()=>setShowEmojiPicker(false)} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,marginTop:8,width:"100%",textAlign:"center"}}>닫기</button>
+          </div>
+        )}
+
+        {editing?(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              <div>
+                <label style={lbl}>MBTI</label>
+                <select value={form.mbti||""} onChange={e=>setForm(f=>({...f,mbti:e.target.value}))} style={inputStyle}>
+                  <option value="">선택</option>
+                  {MBTI_LIST.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>🎂 생일</label>
+                <input type="text" value={form.birthday||""} onChange={e=>setForm(f=>({...f,birthday:e.target.value}))} placeholder="예: 3/15" style={inputStyle}/>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lbl}>💡 관심사</label>
+              <input value={form.interests||""} onChange={e=>setForm(f=>({...f,interests:e.target.value}))} placeholder="예: AI, 여행, 사진" style={inputStyle}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              <div>
+                <label style={lbl}>🎮 취미</label>
+                <input value={form.hobbies||""} onChange={e=>setForm(f=>({...f,hobbies:e.target.value}))} placeholder="예: 게임, 등산" style={inputStyle}/>
+              </div>
+              <div>
+                <label style={lbl}>🍕 좋아하는 음식</label>
+                <input value={form.food||""} onChange={e=>setForm(f=>({...f,food:e.target.value}))} placeholder="예: 라멘, 피자" style={inputStyle}/>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lbl}>✨ 한줄소개</label>
+              <input value={form.bio||""} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="나를 한 줄로 소개하면..." style={inputStyle}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>setEditing(false)} outline full color="#94a3b8">취소</Btn>
+              <Btn onClick={handleSave} full>저장</Btn>
+            </div>
+          </div>
+        ):hasProfile?(
+          <div style={{display:"flex",flexDirection:"column",gap:5,fontSize:14,color:"#475569"}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4}}>
+              {myProfile.mbti&&<Tag color="#6366f1">{myProfile.mbti}</Tag>}
+              {myProfile.birthday&&<Tag color="#f59e0b">🎂 {myProfile.birthday}</Tag>}
+            </div>
+            {myProfile.interests&&<p>💡 {myProfile.interests}</p>}
+            {myProfile.hobbies&&<p>🎮 {myProfile.hobbies}</p>}
+            {myProfile.food&&<p>🍕 {myProfile.food}</p>}
+            {myProfile.bio&&<p style={{color:"#64748b",fontStyle:"italic",marginTop:4}}>"{myProfile.bio}"</p>}
+          </div>
+        ):(
+          <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8"}}>
+            <div style={{fontSize:32,marginBottom:8}}>📝</div>
+            <p style={{fontSize:14}}>프로필을 작성해 팀원들에게 나를 소개해보세요!</p>
+          </div>
+        )}
+      </Card>
+
+      {/* Others */}
+      <div style={{fontSize:14,fontWeight:600,color:"#64748b",marginTop:2}}>팀원 프로필</div>
+      {members.filter(m=>m!==user).map(m=>{
+        const p=profiles[m]||{};const has=Object.values(p).some(v=>v);
+        return(
+          <Card key={m}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:has?10:0}}>
+              <MemberAvatar name={m} size={38} emojis={emojis}/>
+              <div style={{flex:1}}>
+                <span style={{fontWeight:500,fontSize:15}}>{m}</span>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                  {p.mbti&&<Tag color="#6366f1" small>{p.mbti}</Tag>}
+                  {p.birthday&&<Tag color="#f59e0b" small>🎂 {p.birthday}</Tag>}
+                </div>
+              </div>
+            </div>
+            {has?(
+              <div style={{fontSize:14,color:"#64748b",paddingLeft:48,display:"flex",flexDirection:"column",gap:3}}>
+                {p.interests&&<p>💡 {p.interests}</p>}
+                {p.hobbies&&<p>🎮 {p.hobbies}</p>}
+                {p.food&&<p>🍕 {p.food}</p>}
+                {p.bio&&<p style={{fontStyle:"italic"}}>"{p.bio}"</p>}
+              </div>
+            ):<p style={{fontSize:13,color:"#cbd5e1",paddingLeft:48}}>아직 프로필을 작성하지 않았어요</p>}
+          </Card>
+        )
+      })}
+    </div>
+  );
+}
+const lbl={fontSize:13,color:"#64748b",display:"block",marginBottom:4};
+function Tag({children,color,small}){
+  return<span style={{fontSize:small?11:12,background:`${color}18`,color,padding:small?"1px 7px":"2px 10px",borderRadius:999,fontWeight:600}}>{children}</span>
+}
+
+// =======================================
+// 2. WEEKLY CHECK-IN (월요일 기준)
+// =======================================
+function CheckinTab({user,checkins,setCheckins,members}){
+  const today=new Date().toISOString().split("T")[0];
+  const weekKey=getWeekKey();
+  const existing=checkins.find(c=>c.user===user&&c.week===weekKey);
+  const [form,setForm]=useState(existing||{energy:7,workload:5,weekend:"",focus:"",free:""});
+  const [editing,setEditing]=useState(!existing);
+  const emojis=getEmojis();
+
+  const handleSave=()=>{
+    const entry={...form,user,week:weekKey,date:today};
+    const updated=[...checkins.filter(c=>!(c.user===user&&c.week===weekKey)),entry];
+    setCheckins(updated);save(SK.checkins,updated);setEditing(false);
+  };
+
+  const weekCheckins=checkins.filter(c=>c.week===weekKey);
+  const allDone=members.every(m=>weekCheckins.find(c=>c.user===m));
+  const dayName=["일","월","화","수","목","금","토"][new Date().getDay()];
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <h2 style={{fontWeight:600,fontSize:15}}>📝 주간 체크인</h2>
+          <span style={{fontSize:12,color:"#3b82f6",fontWeight:600}}>{weekCheckins.length}/{members.length}</span>
+        </div>
+        <p style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>매주 월요일 · {weekKey} ({dayName}요일)</p>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {members.map(m=>{const done=weekCheckins.find(c=>c.user===m);
+            return<span key={m} style={{fontSize:12,padding:"3px 10px",borderRadius:999,background:done?"#dcfce7":"#f1f5f9",color:done?"#15803d":"#cbd5e1",display:"flex",alignItems:"center",gap:3}}>
+              {(emojis[m]||"")+" "}{m.split("(")[0]}
+            </span>
+          })}
+        </div>
+      </Card>
+
+      {editing?(
+        <Card>
+          <h3 style={{fontWeight:600,fontSize:15,marginBottom:16}}>내 체크인 작성</h3>
+
+          {/* Energy */}
+          <div style={{marginBottom:18}}>
+            <label style={{fontSize:14,fontWeight:500,display:"block",marginBottom:8}}>
+              ⚡ 에너지 레벨 <span style={{color:"#3b82f6",fontWeight:700}}>{form.energy}</span>/10
+            </label>
+            <input type="range" min="1" max="10" value={form.energy} onChange={e=>setForm(f=>({...f,energy:+e.target.value}))}/>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",marginTop:4}}>
+              <span>🪫 방전</span><span>🔋 완충</span>
+            </div>
+          </div>
+
+          {/* Workload */}
+          <div style={{marginBottom:18}}>
+            <label style={{fontSize:14,fontWeight:500,display:"block",marginBottom:8}}>
+              📦 업무 과중도 <span style={{color:form.workload>=8?"#ef4444":form.workload>=5?"#f59e0b":"#10b981",fontWeight:700}}>{form.workload}</span>/10
+            </label>
+            <input type="range" min="1" max="10" value={form.workload} onChange={e=>setForm(f=>({...f,workload:+e.target.value}))}/>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",marginTop:4}}>
+              <span>여유</span><span>폭주</span>
+            </div>
+          </div>
+
+          <TextArea label="🌴 지난 주말 공유" value={form.weekend} onChange={v=>setForm(f=>({...f,weekend:v}))} placeholder="주말에 뭐 했어요? 쉬었어요? 놀았어요?"/>
+          <TextArea label="🎯 이번 주 집중할 일" value={form.focus} onChange={v=>setForm(f=>({...f,focus:v}))} placeholder="이번 주 가장 중요한 건..."/>
+          <TextArea label="💬 자유로운 한마디" value={form.free} onChange={v=>setForm(f=>({...f,free:v}))} placeholder="하고 싶은 말, 공유하고 싶은 것..."/>
+          <Btn onClick={handleSave} full>저장하기</Btn>
+        </Card>
+      ):(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,color:"#16a34a"}}>✅ 체크인 완료</span>
+            <button onClick={()=>setEditing(true)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13,textDecoration:"underline"}}>수정</button>
+          </div>
+          <div style={{display:"flex",gap:12,fontSize:14,color:"#475569",marginTop:8,flexWrap:"wrap"}}>
+            <span>⚡ {form.energy}/10</span>
+            <span>📦 {form.workload}/10</span>
+          </div>
+          {form.weekend&&<p style={{fontSize:14,color:"#475569",marginTop:6}}>🌴 {form.weekend}</p>}
+          {form.focus&&<p style={{fontSize:14,color:"#475569",marginTop:4}}>🎯 {form.focus}</p>}
+          {form.free&&<p style={{fontSize:14,color:"#475569",marginTop:4}}>💬 {form.free}</p>}
+        </Card>
+      )}
+
+      {allDone&&<TeamSummary weekCheckins={weekCheckins}/>}
+
+      {!allDone&&weekCheckins.length>0&&(
+        <Card>
+          <h3 style={{fontWeight:500,fontSize:14,color:"#64748b",marginBottom:10}}>팀 현황</h3>
+          {weekCheckins.map(c=>(
+            <div key={c.user} style={{display:"flex",alignItems:"center",gap:10,fontSize:14,marginBottom:6}}>
+              <MemberAvatar name={c.user} size={26} emojis={emojis}/>
+              <span style={{width:36,fontSize:13,color:"#64748b"}}>{c.user.split("(")[0]}</span>
+              <span>⚡{c.energy}</span>
+              <span>📦{c.workload}</span>
+              {c.focus&&<span style={{color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{c.focus}</span>}
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function TeamSummary({weekCheckins}){
+  const [analysis,setAnalysis]=useState("");
+  const [loading,setLoading]=useState(false);
+  const analyze=async()=>{
+    setLoading(true);
+    const s=weekCheckins.map(c=>`${c.user}: 에너지${c.energy}/10 업무과중${c.workload}/10 주말:${c.weekend||"-"} 집중:${c.focus||"-"} 한마디:${c.free||"-"}`).join("\n");
+    setAnalysis(await callClaude(`팀 주간 체크인:\n${s}\n\n팀 상태 요약, 업무 과중 주의 멤버, 제안.`,"팀 웰빙 전문가. 한국어 300자."));
+    setLoading(false);
+  };
+  const avgE=(weekCheckins.reduce((s,c)=>s+c.energy,0)/weekCheckins.length).toFixed(1);
+  const avgW=(weekCheckins.reduce((s,c)=>s+(c.workload||5),0)/weekCheckins.length).toFixed(1);
+  return(
+    <Card style={{background:"linear-gradient(135deg,#eef2ff,#dbeafe)",border:"1px solid #c7d2fe"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <h3 style={{fontWeight:600,color:"#3730a3",fontSize:15}}>🤖 팀 분석</h3>
+        <Btn onClick={analyze} disabled={loading} small color="#6366f1">{loading?"분석 중...":"AI 분석"}</Btn>
+      </div>
+      <p style={{fontSize:13,color:"#475569"}}>📊 전원 완료! 평균 에너지 {avgE}/10 · 업무과중 {avgW}/10</p>
+      {analysis&&<p style={{fontSize:14,color:"#334155",lineHeight:1.6,whiteSpace:"pre-wrap",marginTop:10,paddingTop:10,borderTop:"1px solid #c7d2fe"}}>{analysis}</p>}
+    </Card>
+  );
+}
+
+// =======================================
+// 3. 1:1 (격주 기준, 유연한 날짜)
+// =======================================
+function OneOnOneTab({user,isManager,oneOnOnes,setOneOnOnes,members}){
+  const [selMember,setSelMember]=useState(isManager?null:user);
+  const [adding,setAdding]=useState(false);
+  const [noteDate,setNoteDate]=useState(new Date().toISOString().split("T")[0]);
+  const [newNote,setNewNote]=useState({energy:7,going_well:"",struggling:"",ask_manager:"",career:"",private_note:""});
+  const [aiLoading,setAiLoading]=useState(false);
+  const [aiInsight,setAiInsight]=useState("");
+  const emojis=getEmojis();
+  const manager=getManager();
+
+  const mems=isManager?members.filter(m=>m!==manager):[user];
+  const myNotes=oneOnOnes.filter(n=>n.member===selMember).sort((a,b)=>b.date>a.date?1:-1);
+
+  const handleSave=()=>{
+    const entry={...newNote,member:selMember,author:user,date:noteDate,id:Date.now()};
+    const updated=[...oneOnOnes,entry];
+    setOneOnOnes(updated);save(SK.oneOnOnes,updated);
+    setAdding(false);setNewNote({energy:7,going_well:"",struggling:"",ask_manager:"",career:"",private_note:""});
+    setNoteDate(new Date().toISOString().split("T")[0]);
+  };
+  const runAi=async()=>{
+    setAiLoading(true);
+    const hist=myNotes.slice(0,8).map(n=>`${n.date}: E${n.energy} 잘됨:${n.going_well||"-"} 힘듦:${n.struggling||"-"} 커리어:${n.career||"-"}`).join("\n");
+    setAiInsight(await callClaude(`${selMember} 1:1 히스토리:\n${hist}\n\n상태 추이, 팀장 조언.`,"팀 관리 전문가. 따뜻하고 구체적."));
+    setAiLoading(false);
+  };
+
+  if(!selMember&&isManager)return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <Card>
+        <span style={{fontWeight:600,fontSize:15}}>🤝 격주 1:1 노트</span>
+        <p style={{fontSize:13,color:"#94a3b8",marginTop:4}}>팀원을 선택해 1:1 기록을 관리하세요 (격주 기준, 유연하게)</p>
+      </Card>
+      {mems.map(m=>{
+        const notes=oneOnOnes.filter(n=>n.member===m);
+        const lastDate=notes.sort((a,b)=>b.date>a.date?1:-1)[0]?.date;
+        return(
+          <button key={m} onClick={()=>setSelMember(m)} style={{width:"100%",background:"#fff",borderRadius:14,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,.05)",border:"none",textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <MemberAvatar name={m} size={38} emojis={emojis}/>
+              <div>
+                <div style={{fontWeight:500,fontSize:15}}>{m}</div>
+                <div style={{fontSize:12,color:"#94a3b8"}}>{notes.length}회 · {lastDate?`최근 ${lastDate}`:"기록 없음"}</div>
+              </div>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        {isManager&&<button onClick={()=>{setSelMember(null);setAiInsight("")}} style={{background:"none",border:"none",color:"#3b82f6",fontSize:14}}>←</button>}
+        <MemberAvatar name={selMember} size={30} emojis={emojis}/>
+        <h2 style={{fontWeight:600,fontSize:16}}>{selMember?.split("(")[0]} 1:1</h2>
+      </div>
+
+      {myNotes.length>0&&(
+        <Card style={{background:"linear-gradient(135deg,#fffbeb,#fff7ed)",border:"1px solid #fde68a"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <span style={{fontWeight:500,color:"#92400e",fontSize:14}}>🤖 AI 인사이트</span>
+            <Btn onClick={runAi} disabled={aiLoading} small color="#f59e0b">{aiLoading?"분석 중...":"분석"}</Btn>
+          </div>
+          {aiInsight?<p style={{fontSize:14,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{aiInsight}</p>:
+            <p style={{fontSize:13,color:"#94a3b8"}}>히스토리 기반 AI 분석</p>}
+        </Card>
+      )}
+
+      {!adding?(
+        <button onClick={()=>setAdding(true)} style={{width:"100%",padding:"14px 0",border:"2px dashed #bfdbfe",color:"#3b82f6",borderRadius:12,background:"#fff",fontSize:14}}>+ 새 1:1 기록 추가</button>
+      ):(
+        <Card>
+          <h3 style={{fontWeight:600,marginBottom:14,fontSize:15}}>새 1:1 기록</h3>
+          {/* Date picker */}
+          <div style={{marginBottom:14}}>
+            <label style={lbl}>📅 1:1 날짜</label>
+            <input type="date" value={noteDate} onChange={e=>setNoteDate(e.target.value)}
+              style={{...inputStyle,fontSize:15}}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={lbl}>⚡ 에너지 <span style={{fontWeight:700,color:"#3b82f6"}}>{newNote.energy}</span>/10</label>
+            <input type="range" min="1" max="10" value={newNote.energy} onChange={e=>setNewNote(f=>({...f,energy:+e.target.value}))}/>
+          </div>
+          {[["going_well","✅ 잘 되고 있는 것"],["struggling","😓 힘든 것 / 고민"],["ask_manager","🙋 팀장에게 바라는 것"],["career","🌱 커리어/성장"]].map(([k,l])=>(
+            <TextArea key={k} label={l} value={newNote[k]} onChange={v=>setNewNote(f=>({...f,[k]:v}))}/>
+          ))}
+          {isManager&&(
+            <div style={{marginBottom:14}}>
+              <label style={lbl}>🔐 팀장 메모 (나만 보기)</label>
+              <textarea value={newNote.private_note} onChange={e=>setNewNote(f=>({...f,private_note:e.target.value}))}
+                rows={2} style={{width:"100%",border:"1px solid #fde68a",background:"#fffbeb",borderRadius:10,padding:"10px 12px",fontSize:14,resize:"none",outline:"none"}}/>
+            </div>
+          )}
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>setAdding(false)} outline full color="#94a3b8">취소</Btn>
+            <Btn onClick={handleSave} full>저장</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* History */}
+      {myNotes.map(n=>(
+        <Card key={n.id}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",marginBottom:8}}>
+            <span>📅 {n.date}</span>
+            <span>⚡ {n.energy}/10</span>
+          </div>
+          {n.going_well&&<p style={{fontSize:14,marginBottom:4}}>✅ {n.going_well}</p>}
+          {n.struggling&&<p style={{fontSize:14,marginBottom:4}}>😓 {n.struggling}</p>}
+          {n.ask_manager&&<p style={{fontSize:14,marginBottom:4}}>🙋 {n.ask_manager}</p>}
+          {n.career&&<p style={{fontSize:14,marginBottom:4}}>🌱 {n.career}</p>}
+          {isManager&&n.private_note&&(
+            <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:8,fontSize:13,color:"#92400e",marginTop:6}}>🔐 {n.private_note}</div>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// =======================================
+// 4. DASHBOARD
+// =======================================
+function DashboardTab({checkins,profiles,oneOnOnes,members}){
+  const [aiAnalysis,setAiAnalysis]=useState("");
+  const [aiLoading,setAiLoading]=useState(false);
+  const emojis=getEmojis();
+
+  const weeks=[...new Set(checkins.map(c=>c.week))].sort().reverse().slice(0,8).reverse();
+  const avgE=wk=>{const wc=checkins.filter(c=>c.week===wk);return wc.length?(wc.reduce((s,c)=>s+c.energy,0)/wc.length).toFixed(1):0};
+  const avgW=wk=>{const wc=checkins.filter(c=>c.week===wk);return wc.length?(wc.reduce((s,c)=>s+(c.workload||5),0)/wc.length).toFixed(1):0};
+
+  const runAi=async()=>{
+    setAiLoading(true);
+    const recent=checkins.slice(-30).map(c=>`${c.week} ${c.user}: E${c.energy} W${c.workload||"-"} F:${c.focus||c.free||"-"}`).join("\n");
+    setAiAnalysis(await callClaude(`최근 팀 데이터:\n${recent}\n\n추이, 번아웃 리스크, 업무과중 주의, 개선점.`,"팀 분석 전문가. 한국어."));
+    setAiLoading(false);
+  };
+
+  const cw=getWeekKey(),tw=checkins.filter(c=>c.week===cw);
+  const avgAllE=tw.length?(tw.reduce((s,c)=>s+c.energy,0)/tw.length).toFixed(1):"-";
+  const avgAllW=tw.length?(tw.reduce((s,c)=>s+(c.workload||5),0)/tw.length).toFixed(1):"-";
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* Quick stats */}
+      <div style={{display:"flex",gap:10}}>
+        <Card style={{flex:1,textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:"#3b82f6"}}>{avgAllE}</div><div style={{fontSize:11,color:"#94a3b8"}}>에너지</div></Card>
+        <Card style={{flex:1,textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:Number(avgAllW)>=7?"#ef4444":"#f59e0b"}}>{avgAllW}</div><div style={{fontSize:11,color:"#94a3b8"}}>업무과중</div></Card>
+        <Card style={{flex:1,textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:"#8b5cf6"}}>{tw.length}/{members.length}</div><div style={{fontSize:11,color:"#94a3b8"}}>체크인</div></Card>
+      </div>
+
+      {/* Charts */}
+      <Card>
+        <h2 style={{fontWeight:600,fontSize:15,marginBottom:12}}>📈 주간 추이</h2>
+        {weeks.length===0?<p style={{fontSize:14,color:"#94a3b8"}}>아직 데이터가 없어요</p>:(
+          <div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:4,height:90,marginBottom:6}}>
+              {weeks.map(w=>{const e=avgE(w);const h=Math.round((e/10)*80);
+                return<div key={w+"e"} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#3b82f6"}}>{e}</span>
+                  <div style={{width:"100%",background:"#3b82f6",borderRadius:"3px 3px 0 0",height:Math.max(h,3)}}/>
+                </div>
+              })}
+            </div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:4,height:70,marginBottom:4}}>
+              {weeks.map(w=>{const wl=avgW(w);const h=Math.round((wl/10)*60);
+                return<div key={w+"w"} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"#f59e0b"}}>{wl}</span>
+                  <div style={{width:"100%",background:"#f59e0b",borderRadius:"3px 3px 0 0",height:Math.max(h,3)}}/>
+                </div>
+              })}
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              {weeks.map(w=><div key={w} style={{flex:1,textAlign:"center",fontSize:9,color:"#94a3b8"}}>{w.slice(5)}</div>)}
+            </div>
+            <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:8,fontSize:12,color:"#64748b"}}>
+              <span><span style={{display:"inline-block",width:10,height:10,background:"#3b82f6",borderRadius:2,marginRight:4}}/>에너지</span>
+              <span><span style={{display:"inline-block",width:10,height:10,background:"#f59e0b",borderRadius:2,marginRight:4}}/>업무과중</span>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Members */}
+      <Card>
+        <h2 style={{fontWeight:600,fontSize:15,marginBottom:12}}>👥 멤버 상태</h2>
+        {members.map(m=>{
+          const last=checkins.filter(c=>c.user===m).sort((a,b)=>b.week>a.week?1:-1)[0];
+          const prof=profiles[m];
+          return(
+            <div key={m} style={{display:"flex",alignItems:"center",gap:10,padding:8,borderRadius:10,background:"#f8fafc",marginBottom:6}}>
+              <MemberAvatar name={m} size={36} emojis={emojis}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:14,fontWeight:500}}>{m.split("(")[0]}</span>
+                  {prof?.mbti&&<span style={{fontSize:11,color:"#94a3b8"}}>{prof.mbti}</span>}
+                </div>
+                {last?(
+                  <div style={{display:"flex",gap:8,fontSize:12,color:"#64748b"}}>
+                    <span>⚡{last.energy}</span>
+                    <span>📦{last.workload||"-"}</span>
+                  </div>
+                ):<span style={{fontSize:12,color:"#cbd5e1"}}>체크인 없음</span>}
+              </div>
+              {last&&<div style={{display:"flex",gap:4}}>
+                <div style={{width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600,background:`hsl(${Math.round(last.energy*12)},70%,92%)`,color:`hsl(${Math.round(last.energy*12)},70%,35%)`}}>{last.energy}</div>
+              </div>}
+            </div>
+          )
+        })}
+      </Card>
+
+      {/* AI */}
+      <Card style={{background:"linear-gradient(135deg,#faf5ff,#eef2ff)",border:"1px solid #e9d5ff"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <h3 style={{fontWeight:600,color:"#6b21a8",fontSize:15}}>🤖 AI 종합 분석</h3>
+          <Btn onClick={runAi} disabled={aiLoading} small color="#a855f7">{aiLoading?"분석 중...":"분석 실행"}</Btn>
+        </div>
+        {aiAnalysis?<p style={{fontSize:14,color:"#334155",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{aiAnalysis}</p>:
+          <p style={{fontSize:14,color:"#94a3b8"}}>데이터가 쌓이면 AI가 종합 분석해드려요.</p>}
+      </Card>
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
