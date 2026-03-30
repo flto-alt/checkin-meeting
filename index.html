@@ -448,7 +448,7 @@ function ProfilesTab({user,isManager,profiles,setProfiles,members,refreshMembers
           </div>
         )}
 
-        {isCurrentWeek&&(editing?(
+        {editing?(
           <div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
               <div>
@@ -595,7 +595,7 @@ function CheckinTab({user,checkins,setCheckins,members}){
         {!isCurrentWeek&&<div style={{textAlign:"center"}}><button onClick={()=>setViewWeek(weekKey)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:12,textDecoration:"underline",cursor:"pointer"}}>이번 주로 돌아가기</button></div>}
       </Card>
 
-      {editing?(
+      {isCurrentWeek&&(editing?(
         <Card>
           <h3 style={{fontWeight:600,fontSize:15,marginBottom:16}}>내 체크인 작성</h3>
 
