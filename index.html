@@ -627,17 +627,26 @@ function CheckinTab({user,checkins,setCheckins,members}){
 
       {allDone&&<TeamSummary weekCheckins={weekCheckins}/>}
 
-      {!allDone&&weekCheckins.length>0&&(
+      {weekCheckins.length>0&&(
         <Card>
-          <h3 style={{fontWeight:500,fontSize:14,color:"#64748b",marginBottom:10}}>팀 현황</h3>
+          <h3 style={{fontWeight:600,fontSize:15,marginBottom:12}}>👥 팀원 체크인</h3>
           {weekCheckins.map(c=>(
-            <div key={c.user} style={{display:"flex",alignItems:"center",gap:10,fontSize:14,marginBottom:6}}>
-              <MemberAvatar name={c.user} size={26} emojis={emojis}/>
-              <span style={{width:36,fontSize:13,color:"#64748b"}}>{c.user.split("(")[0]}</span>
-              <span>⚡{c.energy}</span>
-              <span>📦{c.workload}</span>
-              {c.focus&&<span style={{color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{c.focus}</span>}
-            </div>
+            <details key={c.user} style={{marginBottom:8,borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}} open={c.user!==user}>
+              <summary style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:"#f8fafc",fontSize:14,fontWeight:500}}>
+                <MemberAvatar name={c.user} size={26} emojis={emojis}/>
+                <span>{c.user.split("(")[0]}</span>
+                <span style={{marginLeft:"auto",fontSize:12,color:"#94a3b8"}}>⚡{c.energy}/10 📦{c.workload}/10</span>
+              </summary>
+              <div style={{padding:"10px 14px",fontSize:13,color:"#334155",display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:16}}>
+                  <span>⚡ 에너지 <b style={{color:"#3b82f6"}}>{c.energy}</b>/10</span>
+                  <span>📦 업무과중 <b style={{color:c.workload>=8?"#ef4444":c.workload>=5?"#f59e0b":"#10b981"}}>{c.workload}</b>/10</span>
+                </div>
+                {c.weekend&&<div style={{background:"#f0fdf4",borderRadius:8,padding:"8px 10px",marginTop:2}}>🌴 <b>주말</b>: {c.weekend}</div>}
+                {c.focus&&<div style={{background:"#eff6ff",borderRadius:8,padding:"8px 10px"}}>🎯 <b>집중</b>: {c.focus}</div>}
+                {c.free&&<div style={{background:"#fefce8",borderRadius:8,padding:"8px 10px"}}>💬 <b>한마디</b>: {c.free}</div>}
+              </div>
+            </details>
           ))}
         </Card>
       )}
