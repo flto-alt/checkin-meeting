@@ -105,9 +105,10 @@ const callClaude=async(prompt,sys="")=>{
   }catch(e){return`⚠️ ${e.message}`}
 };
 
+function localDate(dt){const d=dt||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function getWeekKey(){
   const d=new Date(),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);
-  return new Date(new Date(d).setDate(diff)).toISOString().split("T")[0];
+  const mon=new Date(d);mon.setDate(diff);return localDate(mon);
 }
 
 // ===== SHARED COMPONENTS =====
@@ -544,11 +545,13 @@ function Tag({children,color,small}){
 // 2. WEEKLY CHECK-IN (월요일 기준)
 // =======================================
 function CheckinTab({user,checkins,setCheckins,members}){
-  const today=new Date().toISOString().split("T")[0];
+  const today=localDate();
   const weekKey=getWeekKey();
+  const dow=new Date().getDay(); // 0=일,1=월...6=토
+  const canRecord=dow>=1&&dow<=5; // 월~금만 기록 가능
   const existing=checkins.find(c=>c.user===user&&c.week===weekKey);
   const [form,setForm]=useState(existing||{energy:7,workload:5,weekend:"",focus:"",free:""});
-  const [editing,setEditing]=useState(!existing);
+  const [editing,setEditing]=useState(!existing&&canRecord);
   const emojis=getEmojis();
   const allWeeks=[...new Set(checkins.map(c=>c.week))].sort().reverse();
   if(!allWeeks.includes(weekKey))allWeeks.unshift(weekKey);
@@ -595,7 +598,25 @@ function CheckinTab({user,checkins,setCheckins,members}){
         {!isCurrentWeek&&<div style={{textAlign:"center"}}><button onClick={()=>setViewWeek(weekKey)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:12,textDecoration:"underline",cursor:"pointer"}}>이번 주로 돌아가기</button></div>}
       </Card>
 
-      {isCurrentWeek&&(editing?(
+      {isCurrentWeek&&!canRecord&&!existing&&(
+        <Card><p style={{textAlign:"center",color:"#94a3b8",fontSize:14,padding:"12px 0"}}>주말에는 체크인을 기록할 수 없어요. 월~금에 작성해주세요!</p></Card>
+      )}
+      {isCurrentWeek&&!canRecord&&existing&&(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,color:"#16a34a"}}>✅ 체크인 완료</span>
+            <span style={{fontSize:12,color:"#94a3b8"}}>주말에는 수정 불가</span>
+          </div>
+          <div style={{display:"flex",gap:12,fontSize:14,color:"#475569",marginTop:8,flexWrap:"wrap"}}>
+            <span>⚡ {form.energy}/10</span>
+            <span>📦 {form.workload}/10</span>
+          </div>
+          {form.weekend&&<p style={{fontSize:14,color:"#475569",marginTop:6}}>🌴 {form.weekend}</p>}
+          {form.focus&&<p style={{fontSize:14,color:"#475569",marginTop:4}}>🎯 {form.focus}</p>}
+          {form.free&&<p style={{fontSize:14,color:"#475569",marginTop:4}}>💬 {form.free}</p>}
+        </Card>
+      )}
+      {isCurrentWeek&&canRecord&&(editing?(
         <Card>
           <h3 style={{fontWeight:600,fontSize:15,marginBottom:16}}>내 체크인 작성</h3>
 
@@ -630,7 +651,7 @@ function CheckinTab({user,checkins,setCheckins,members}){
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontWeight:600,color:"#16a34a"}}>✅ 체크인 완료</span>
-            <button onClick={()=>setEditing(true)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13,textDecoration:"underline"}}>수정</button>
+            {canRecord&&<button onClick={()=>setEditing(true)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:13,textDecoration:"underline"}}>수정</button>}
           </div>
           <div style={{display:"flex",gap:12,fontSize:14,color:"#475569",marginTop:8,flexWrap:"wrap"}}>
             <span>⚡ {form.energy}/10</span>
@@ -703,7 +724,7 @@ function TeamSummary({weekCheckins}){
 function OneOnOneTab({user,isManager,oneOnOnes,setOneOnOnes,members}){
   const [selMember,setSelMember]=useState(isManager?null:user);
   const [adding,setAdding]=useState(false);
-  const [noteDate,setNoteDate]=useState(new Date().toISOString().split("T")[0]);
+  const [noteDate,setNoteDate]=useState(localDate());
   const [newNote,setNewNote]=useState({energy:7,going_well:"",struggling:"",ask_manager:"",career:"",private_note:""});
   const [aiLoading,setAiLoading]=useState(false);
   const [aiInsight,setAiInsight]=useState("");
@@ -718,7 +739,7 @@ function OneOnOneTab({user,isManager,oneOnOnes,setOneOnOnes,members}){
     const updated=[...oneOnOnes,entry];
     setOneOnOnes(updated);save(SK.oneOnOnes,updated);
     setAdding(false);setNewNote({energy:7,going_well:"",struggling:"",ask_manager:"",career:"",private_note:""});
-    setNoteDate(new Date().toISOString().split("T")[0]);
+    setNoteDate(localDate());
   };
   const runAi=async()=>{
     setAiLoading(true);
